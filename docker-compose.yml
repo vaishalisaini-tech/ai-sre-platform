@@ -1,0 +1,42 @@
+# docker-compose.yml
+version: "3.8"
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: ai_sre_db
+    restart: always
+    environment:
+      POSTGRES_USER: sre_user
+      POSTGRES_PASSWORD: sre_password
+      POSTGRES_DB: sre_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  backend:
+    build: ./backend
+    container_name: ai_sre_backend
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      # NOTE: host is "db" (the service name), not "localhost"
+      DATABASE_URL: postgresql://sre_user:sre_password@db:5432/sre_db
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+    depends_on:
+      - db
+
+  frontend:
+    build: ./frontend
+    container_name: ai_sre_frontend
+    restart: always
+    ports:
+      - "3000:80"        # visit the dashboard at localhost:3000
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+
