@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-watcher
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: agent-watcher }
+  template:
+    metadata:
+      labels: { app: agent-watcher }
+    spec:
+      serviceAccountName: sre-agent          # grants the RBAC permissions
+      containers:
+        - name: watcher
+          image: us-central1-docker.pkg.dev/ai-sre-platform-506305/ai-sre-images/backend:v1
+          command: ["python", "-m", "app.watcher"]
+          env:
+            - name: DATABASE_URL
+              value: postgresql://sre_user:sre_password@postgres:5432/sre_db
+            - name: GOOGLE_API_KEY
+              valueFrom:
+                secretKeyRef: { name: gemini-secret, key: GOOGLE_API_KEY }
+            - name: AUTO_REMEDIATE
+              value: "false"                 # start in safe recommend-only mode
+

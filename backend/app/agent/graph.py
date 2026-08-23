@@ -3,15 +3,44 @@ from typing import TypedDict
 from langgraph.graph import StateGraph, END
 from langchain_google_genai import ChatGoogleGenerativeAI
 from app.database import search_runbooks
+import os
+from app.k8s_actions import restart_deployment
 
 # The Gemini chat model for reasoning. Reads GOOGLE_API_KEY from env.
 llm = ChatGoogleGenerativeAI(model="gemini-3.6-flash")
 
+AUTO_REMEDIATE = os.getenv("AUTO_REMEDIATE", "false").lower() == "true"
+
+
 class AgentState(TypedDict):
     error_message: str
+    target_deployment: str
     matched_runbook: str
     diagnosis: str
     action_taken: str
+
+def act_node(state: AgentState) -> AgentState:
+    print("NODE: Acting...")
+    deployment = state.get("target_deployment")
+
+    if not deployment:
+        state["action_taken"] = "No action: could not identify a target deployment."
+        return state
+
+    if AUTO_REMEDIATE:
+        try:
+            result = restart_deployment(deployment)
+            state["action_taken"] = f"EXECUTED: {result}"
+        except Exception as e:
+            state["action_taken"] = f"FAILED to restart '{deployment}': {e}"
+    else:
+        # Safe default: recommend but do not execute
+        state["action_taken"] = (
+            f"PENDING APPROVAL: recommended action is to restart "
+            f"deployment '{deployment}'. (AUTO_REMEDIATE is off — dry-run.)"
+        )
+    return state
+
 
 def _extract_text(response) -> str:
     """Newer Gemini models return content as a list of blocks.
@@ -63,9 +92,12 @@ def build_graph():
     workflow = StateGraph(AgentState)
     workflow.add_node("detect", detect_node)
     workflow.add_node("diagnose", diagnose_node)
+    workflow.add_node("act", act_node)               
     workflow.set_entry_point("detect")
     workflow.add_edge("detect", "diagnose")
-    workflow.add_edge("diagnose", END)
+    workflow.add_edge("diagnose", "act")             
+    workflow.add_edge("act", END)                    
+
     return workflow.compile()
 
 if __name__ == "__main__":
