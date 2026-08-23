@@ -37,8 +37,10 @@ pipeline {
         sh '''
           kubectl set image deployment/backend backend=$REPO/backend:${BUILD_NUMBER}
           kubectl set image deployment/frontend frontend=$REPO/frontend:${BUILD_NUMBER}
+          kubectl set image deployment/agent-watcher watcher=$REPO/backend:${BUILD_NUMBER}
           kubectl rollout status deployment/backend
           kubectl rollout status deployment/frontend
+          kubectl rollout status deployment/agent-watcher
         '''
       }
     }

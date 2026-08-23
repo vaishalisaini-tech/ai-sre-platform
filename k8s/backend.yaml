@@ -12,7 +12,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: us-central1-docker.pkg.dev/ai-sre-platform-506305/ai-sre-images/backend:v1
+          image: us-central1-docker.pkg.dev/ai-sre-platform-506305/ai-sre-images/backend:v3
           ports:
             - containerPort: 8000
           env:

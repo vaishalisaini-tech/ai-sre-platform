@@ -13,7 +13,7 @@ spec:
       serviceAccountName: sre-agent          # grants the RBAC permissions
       containers:
         - name: watcher
-          image: us-central1-docker.pkg.dev/ai-sre-platform-506305/ai-sre-images/backend:v1
+          image: us-central1-docker.pkg.dev/ai-sre-platform-506305/ai-sre-images/backend:v3
           command: ["python", "-m", "app.watcher"]
           env:
             - name: DATABASE_URL
