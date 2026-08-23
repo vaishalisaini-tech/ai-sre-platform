@@ -2,7 +2,7 @@ pipeline {
   agent any
 
   environment {
-    PROJECT_ID = credentials('gcp-project-id')
+    PROJECT_ID = 'ai-sre-platform-506305'
     REGION     = 'us-central1'
     REPO       = "us-central1-docker.pkg.dev/${PROJECT_ID}/ai-sre-images"
     CLUSTER    = 'ai-sre-cluster'
