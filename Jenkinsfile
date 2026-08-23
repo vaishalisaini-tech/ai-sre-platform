@@ -8,8 +8,9 @@ pipeline {
     CLUSTER    = 'ai-sre-cluster'
   }
 
+  stages {                                    // <-- ADDED: opens the stages block
 
-   stage('Authenticate to GCP') {
+    stage('Authenticate to GCP') {
       steps {
         sh '''
           gcloud config set project $PROJECT_ID
@@ -18,7 +19,6 @@ pipeline {
         '''
       }
     }
-
 
     stage('Build & Push Images') {
       steps {
@@ -42,7 +42,8 @@ pipeline {
         '''
       }
     }
-  }
+
+  }                                           // <-- ADDED: closes the stages block
 
   post {
     success { echo "✅ Deployed build ${BUILD_NUMBER} successfully!" }
