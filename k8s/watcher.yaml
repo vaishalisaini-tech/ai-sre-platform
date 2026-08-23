@@ -22,5 +22,5 @@ spec:
               valueFrom:
                 secretKeyRef: { name: gemini-secret, key: GOOGLE_API_KEY }
             - name: AUTO_REMEDIATE
-              value: "false"                 # start in safe recommend-only mode
+              value: "true"                 # start in safe recommend-only mode
 

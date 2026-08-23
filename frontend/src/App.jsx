@@ -56,6 +56,7 @@ function App() {
             <th>Error</th>
             <th>Matched Runbook</th>
             <th>Diagnosis</th>
+            <th>Action</th>
             <th>Time</th>
           </tr>
         </thead>
@@ -66,6 +67,7 @@ function App() {
               <td>{inc.error_message}</td>
               <td>{inc.matched_runbook}</td>
               <td>{inc.diagnosis}</td>
+              <td>{inc.action_taken}</td>
               <td>{new Date(inc.created_at).toLocaleString()}</td>
             </tr>
           ))}

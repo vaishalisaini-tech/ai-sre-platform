@@ -19,6 +19,10 @@ class AgentState(TypedDict):
     diagnosis: str
     action_taken: str
 
+# module-level, near AUTO_REMEDIATE
+_remediation_counts = {}
+MAX_AUTO_RESTARTS = 2
+
 def act_node(state: AgentState) -> AgentState:
     print("NODE: Acting...")
     deployment = state.get("target_deployment")
@@ -27,18 +31,28 @@ def act_node(state: AgentState) -> AgentState:
         state["action_taken"] = "No action: could not identify a target deployment."
         return state
 
-    if AUTO_REMEDIATE:
-        try:
-            result = restart_deployment(deployment)
-            state["action_taken"] = f"EXECUTED: {result}"
-        except Exception as e:
-            state["action_taken"] = f"FAILED to restart '{deployment}': {e}"
-    else:
-        # Safe default: recommend but do not execute
+    if not AUTO_REMEDIATE:
         state["action_taken"] = (
             f"PENDING APPROVAL: recommended action is to restart "
-            f"deployment '{deployment}'. (AUTO_REMEDIATE is off — dry-run.)"
+            f"deployment '{deployment}'. (AUTO_REMEDIATE is off.)"
         )
+        return state
+
+    count = _remediation_counts.get(deployment, 0)
+    if count >= MAX_AUTO_RESTARTS:
+        state["action_taken"] = (
+            f"ESCALATED: '{deployment}' auto-restarted {count} times and is still "
+            f"failing — this needs human intervention (likely a bad image or config)."
+        )
+        return state
+
+    try:
+        result = restart_deployment(deployment)
+        _remediation_counts[deployment] = count + 1
+        state["action_taken"] = f"EXECUTED ({count + 1}/{MAX_AUTO_RESTARTS}): {result}"
+    except Exception as e:
+        state["action_taken"] = f"FAILED to restart '{deployment}': {e}"
+
     return state
 
 
