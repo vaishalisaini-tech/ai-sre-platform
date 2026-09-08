@@ -292,15 +292,3 @@ Configuration is supplied through environment variables (see `.env.example`).
 * **Preventing runaway automation.** Restarting a pod creates a new pod name, which naively looks like a brand-new incident and can trigger an infinite restart storm. A per-deployment remediation cap escalates to a human after repeated failures.
 * **Ephemeral-cluster cost management.** Because `terraform destroy` removes the cluster, LoadBalancer, and database disk, restart requires re-creating secrets and re-seeding data. Scripted automation makes teardown and rebuild a single command each while keeping idle cost near zero.
 * **Resilient watching and graceful degradation.** The Kubernetes watch stream closes periodically; the watcher reconnects automatically. When the Gemini quota is exhausted, the agent falls back to the retrieved runbook so remediation still completes.
-
-## Future Enhancements
-
-* Migrate the database to Cloud SQL and secrets to Secret Manager so data survives cluster teardown.
-* Replace keyword-based action classification with LLM-driven tool selection under guardrails.
-* Use the Prometheus Operator / kube-prometheus-stack Helm chart in place of hand-written manifests.
-* Add horizontal pod autoscaling and a vector index tuned for larger runbook corpora.
-* Add Alembic migrations and capture end-to-end metrics (mean time to remediate, retrieval accuracy, deploy duration).
-
-## License
-
-Add a license of your choice (for example, MIT) as a `LICENSE` file before publishing publicly.
