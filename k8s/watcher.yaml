@@ -13,8 +13,11 @@ spec:
       serviceAccountName: sre-agent          # grants the RBAC permissions
       containers:
         - name: watcher
-          image: us-central1-docker.pkg.dev/ai-sre-platform-506305/ai-sre-images/backend:v3
+          image: us-central1-docker.pkg.dev/ai-sre-platform-506305/ai-sre-images/backend:v4
           command: ["python", "-m", "app.watcher"]
+          resources:
+            requests: { cpu: "100m", memory: "256Mi" }
+            limits:   { cpu: "500m", memory: "512Mi" }
           env:
             - name: DATABASE_URL
               value: postgresql://sre_user:sre_password@postgres:5432/sre_db
@@ -22,5 +25,8 @@ spec:
               valueFrom:
                 secretKeyRef: { name: gemini-secret, key: GOOGLE_API_KEY }
             - name: AUTO_REMEDIATE
-              value: "true"                 # start in safe recommend-only mode
+              value: "true"                 
+            - name: SLACK_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef: { name: slack-secret, key: SLACK_WEBHOOK_URL }
 

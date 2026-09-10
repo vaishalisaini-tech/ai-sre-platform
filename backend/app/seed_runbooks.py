@@ -31,6 +31,35 @@ SAMPLE_RUNBOOKS = [
             "registry, and confirm the imagePullSecret credentials are correct."
         ),
     },
+    {
+        "title": "High Memory Usage / Memory Pressure",
+        "content": (
+            "When a pod's memory usage approaches or exceeds its limit, it risks being "
+            "OOMKilled. Restarting only delays the problem. Correct actions: increase the "
+            "container's memory limit in the deployment resources section, OR scale the "
+            "deployment horizontally to spread load across more replicas. Investigate for "
+            "a memory leak if usage grows steadily over time."
+        ),
+    },
+    {
+        "title": "High CPU Usage / CPU Saturation",
+        "content": (
+            "When a pod's CPU usage is saturated, requests slow down and latency rises. "
+            "Restarting does not help. Correct action: scale the deployment horizontally "
+            "by adding more replicas so load is distributed. If CPU stays high on all "
+            "replicas, raise the CPU limit or optimize hot code paths."
+        ),
+    },
+    {
+        "title": "Pod Restarting Too Often",
+        "content": (
+            "A pod restarting repeatedly (CrashLoopBackOff) usually means a startup failure: "
+            "bad config, missing env var, or a failing health check. A restart can clear a "
+            "transient issue, but if it keeps recurring after 2 restarts, the root cause is "
+            "in the image or config and the incident must be escalated to a human."
+        ),
+    },
+
 ]
 
 def seed():

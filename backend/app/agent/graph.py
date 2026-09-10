@@ -4,7 +4,12 @@ from langgraph.graph import StateGraph, END
 from langchain_google_genai import ChatGoogleGenerativeAI
 from app.database import search_runbooks
 import os
-from app.k8s_actions import restart_deployment
+from app.k8s_actions import restart_deployment,scale_deployment, increase_memory_limit
+import logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s %(message)s')
+log = logging.getLogger("ai-sre")
+from app.notify import notify
+
 
 # The Gemini chat model for reasoning. Reads GOOGLE_API_KEY from env.
 llm = ChatGoogleGenerativeAI(model="gemini-3.6-flash")
@@ -18,40 +23,69 @@ class AgentState(TypedDict):
     matched_runbook: str
     diagnosis: str
     action_taken: str
+    strategy: str
+
 
 # module-level, near AUTO_REMEDIATE
 _remediation_counts = {}
 MAX_AUTO_RESTARTS = 2
 
+def _classify(error_message: str) -> str:
+    """Decide the remediation strategy from the alert text."""
+    e = error_message.lower()
+    if "memory" in e or "oom" in e or "exit code 137" in e:
+        return "memory"
+    if "cpu" in e:
+        return "cpu"
+    if "crashloop" in e or "restart" in e:
+        return "restart"
+    return "restart"
+
+
 def act_node(state: AgentState) -> AgentState:
     print("NODE: Acting...")
     deployment = state.get("target_deployment")
-
     if not deployment:
         state["action_taken"] = "No action: could not identify a target deployment."
         return state
 
-    if not AUTO_REMEDIATE:
-        state["action_taken"] = (
-            f"PENDING APPROVAL: recommended action is to restart "
-            f"deployment '{deployment}'. (AUTO_REMEDIATE is off.)"
-        )
-        return state
+    strategy = _classify(state["error_message"])
+    state["strategy"] = strategy   # record what we decided (see Step 4)
 
-    count = _remediation_counts.get(deployment, 0)
-    if count >= MAX_AUTO_RESTARTS:
-        state["action_taken"] = (
-            f"ESCALATED: '{deployment}' auto-restarted {count} times and is still "
-            f"failing — this needs human intervention (likely a bad image or config)."
-        )
+    if not AUTO_REMEDIATE:
+        recommendation = {
+            "memory":  f"increase memory limit or scale '{deployment}'",
+            "cpu":     f"scale out '{deployment}' with more replicas",
+            "restart": f"restart deployment '{deployment}'",
+        }[strategy]
+        state["action_taken"] = f"PENDING APPROVAL [{strategy}]: recommended action is to {recommendation}. (AUTO_REMEDIATE off.)"
         return state
 
     try:
-        result = restart_deployment(deployment)
-        _remediation_counts[deployment] = count + 1
-        state["action_taken"] = f"EXECUTED ({count + 1}/{MAX_AUTO_RESTARTS}): {result}"
+        if strategy == "memory":
+            result = increase_memory_limit(deployment, "512Mi")
+        elif strategy == "cpu":
+            result = scale_deployment(deployment, replicas=3)
+        else:  # restart, with the storm guardrail
+            count = _remediation_counts.get(deployment, 0)
+            if count >= MAX_AUTO_RESTARTS:
+                state["action_taken"] = f"ESCALATED: '{deployment}' restarted {count}x and still failing — needs human intervention."
+                return state
+            result = restart_deployment(deployment)
+            _remediation_counts[deployment] = count + 1
+            result = f"({count + 1}/{MAX_AUTO_RESTARTS}) {result}"
+
+        state["action_taken"] = f"EXECUTED [{strategy}]: {result}"
     except Exception as e:
-        state["action_taken"] = f"FAILED to restart '{deployment}': {e}"
+        state["action_taken"] = f"FAILED [{strategy}] on '{deployment}': {e}"
+    
+    notify(
+        f":robot_face: *AI-SRE Action*\n"
+        f"*Incident:* {state['error_message']}\n"
+        f"*Strategy:* {state.get('strategy', 'n/a')}\n"
+        f"*Runbook:* {state.get('matched_runbook', 'n/a')}\n"
+        f"*Result:* {state['action_taken']}"
+    )
 
     return state
 
@@ -71,7 +105,7 @@ def _extract_text(response) -> str:
     return "\n".join(parts).strip()
 
 def detect_node(state: AgentState) -> AgentState:
-    print("NODE: Detecting incident...")
+    log.info("NODE: Detecting incident...")
     # If an error was passed in (via the API), keep it.
     # Only use a fake one when running this file directly for testing.
     if not state.get("error_message"):
@@ -80,22 +114,30 @@ def detect_node(state: AgentState) -> AgentState:
 
 
 def diagnose_node(state: AgentState) -> AgentState:
-    print("NODE: Diagnosing with RAG...")
+    log.info("NODE: Diagnosing with RAG...")
     error = state["error_message"]
 
     # 1. RETRIEVE: find the most relevant runbook via vector search
     results = search_runbooks(error, top_k=1)
     best = results[0]
     state["matched_runbook"] = best["title"]
-    print(f"   Matched runbook: {best['title']} (distance={best['distance']:.4f})")
+    log.info(f"   Matched runbook: {best['title']} (distance={best['distance']:.4f})")
 
     # 2. AUGMENT + GENERATE: ask Gemini to produce a fix using that runbook
     prompt = (
-        f"You are an SRE assistant. An incident occurred:\n'{error}'\n\n"
-        f"Here is the relevant runbook titled '{best['title']}':\n"
-        f"{best['content']}\n\n"
-        "Based ONLY on this runbook, give a short, concrete recommended fix."
+        "You are an autonomous Site Reliability Engineering (SRE) agent. "
+        "You are triggered by structured telemetry alerts from Prometheus Alertmanager "
+        "(for example: high CPU, memory pressure, OOM risk, pod restarts, or "
+        "availability alerts) — NOT by raw application text logs.\n\n"
+        f"INCIDENT ALERT:\n{error}\n\n"
+        f"RELEVANT RUNBOOK ('{best['title']}'):\n{best['content']}\n\n"
+        "The alert has already been parsed into a severity, alert name, affected pod, "
+        "and namespace. Based ONLY on the runbook above, provide a short, concrete "
+        "remediation recommendation appropriate for an infrastructure/resource alert. "
+        "If the alert indicates resource pressure (CPU/memory), consider whether a "
+        "restart, a resource-limit change, or scaling is the correct response, and say which."
     )
+
     response = llm.invoke(prompt)
 
     state["diagnosis"] = _extract_text(response)
@@ -124,9 +166,9 @@ if __name__ == "__main__":
     }
     final_state = graph.invoke(initial_state)
 
-    print("\n--- FINAL STATE ---")
-    print(f"Error:     {final_state['error_message']}")
-    print(f"Matched:   {final_state['matched_runbook']}")
-    print(f"Diagnosis: {final_state['diagnosis']}")
-    print(f"Action:    {final_state['action_taken']}")
+    log.info("\n--- FINAL STATE ---")
+    log.info(f"Error:     {final_state['error_message']}")
+    log.info(f"Matched:   {final_state['matched_runbook']}")
+    log.info(f"Diagnosis: {final_state['diagnosis']}")
+    log.info(f"Action:    {final_state['action_taken']}")
 

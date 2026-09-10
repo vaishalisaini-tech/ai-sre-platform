@@ -12,17 +12,35 @@ spec:
     spec:
       containers:
         - name: backend
-          image: us-central1-docker.pkg.dev/ai-sre-platform-506305/ai-sre-images/backend:v3
+          image: us-central1-docker.pkg.dev/ai-sre-platform-506305/ai-sre-images/backend:v4
+          livenessProbe:
+            httpGet: { path: /, port: 8000 }
+            initialDelaySeconds: 10
+          readinessProbe:
+            httpGet: { path: /, port: 8000 }
+            initialDelaySeconds: 5
+          resources:
+            requests: { cpu: "100m", memory: "256Mi" }
+            limits:   { cpu: "500m", memory: "512Mi" }
+
           ports:
             - containerPort: 8000
           env:
             - name: DATABASE_URL
-              value: postgresql://sre_user:sre_password@postgres:5432/sre_db
+              valueFrom:
+                secretKeyRef:
+                  name: db-secret
+                  key: DATABASE_URL
             - name: GOOGLE_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: gemini-secret
                   key: GOOGLE_API_KEY
+
+            - name: SLACK_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef: { name: slack-secret, key: SLACK_WEBHOOK_URL }
+
 ---
 apiVersion: v1
 kind: Service

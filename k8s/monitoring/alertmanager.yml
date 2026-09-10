@@ -1,0 +1,18 @@
+# alertmanager.yml
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: 'ai-sre-webhook'      # default destination for all alerts
+  group_by: ['alertname', 'pod']  # batch alerts of the same type+pod together
+  group_wait: 30s                 # wait 30s to collect related alerts before sending
+  group_interval: 5m
+  repeat_interval: 3h             # don't re-notify the same firing alert too often
+
+receivers:
+  - name: 'ai-sre-webhook'
+    webhook_configs:
+      # Kubernetes internal DNS: <service>.<namespace>.svc.cluster.local
+      - url: 'http://backend.default.svc.cluster.local:8000/api/v1/alerts'
+        send_resolved: false      # don't call us for "resolved" alerts
+

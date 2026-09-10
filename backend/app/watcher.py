@@ -5,6 +5,11 @@ from app.database import log_incident
 import time
 from urllib3.exceptions import ProtocolError
 
+import logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s %(message)s')
+log = logging.getLogger("ai-sre")
+
+
 def _load_config():
     try:
         config.load_incluster_config()
@@ -29,10 +34,10 @@ def main():
     graph = build_graph()
     handled = set()
 
-    print("SRE agent watcher started. Watching pods in 'default'...", flush=True)
+    log.info("SRE agent watcher started. Watching pods in 'default'...")
     w = watch.Watch()
 
-    while True:                                    # reconnect forever
+    while True:                                    
         try:
             for event in w.stream(v1.list_namespaced_pod,
                                   namespace="default",
@@ -49,7 +54,7 @@ def main():
 
                 target = (pod.metadata.labels or {}).get("app", "")
                 error_message = f"Pod '{pod.metadata.name}' problem: {reason}"
-                print("INCIDENT:", error_message, flush=True)
+                log.info("INCIDENT: %s", error_message)
 
                 state = {
                     "error_message": error_message,
@@ -61,14 +66,14 @@ def main():
                 try:
                     result = graph.invoke(state)
                     log_incident(result)
-                    print("  ->", result["action_taken"], flush=True)
+                    log.info("  -> %s", result["action_taken"])
                 except Exception as e:
-                    print("  ERROR handling incident:", e, flush=True)
+                    log.info("  ERROR handling incident: %s", e)
                     handled.discard(key)           # allow a retry next time
 
         except (ProtocolError, Exception) as e:
-            print("Watch stream ended, reconnecting...", e, flush=True)
-            time.sleep(2)                          # brief pause, then reconnect
+            log.warning("Watch stream ended, reconnecting...: %s", e)
+            time.sleep(2)                          
 
 if __name__ == "__main__":
     main()
